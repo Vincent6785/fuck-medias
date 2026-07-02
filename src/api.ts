@@ -2,6 +2,9 @@
 
 const API_BASE = 'https://www.civix.fr/api/v1'
 
+/** Longueur maximale d'une requête (évite d'envoyer une entrée démesurée à l'API). */
+const MAX_QUERY_LENGTH = 100
+
 export interface Depute {
   uid: string
   prenom: string
@@ -22,7 +25,9 @@ interface RawDepute {
 
 /** URL publique de la page civix.fr du député (onglet votes vedettes). */
 export function deputeUrl(slug: string): string {
-  return `https://www.civix.fr/deputes/${slug}?tab=votes-vedettes`
+  // Le slug vient de l'API : on l'encode pour qu'un slug malformé ne puisse pas
+  // altérer le chemin ou injecter des paramètres dans l'URL.
+  return `https://www.civix.fr/deputes/${encodeURIComponent(slug)}?tab=votes-vedettes`
 }
 
 /**
@@ -33,7 +38,7 @@ export async function searchDeputes(
   query: string,
   signal?: AbortSignal,
 ): Promise<Depute[]> {
-  const trimmed = query.trim()
+  const trimmed = query.trim().slice(0, MAX_QUERY_LENGTH)
   if (!trimmed) return []
 
   const url = `${API_BASE}/search?search=${encodeURIComponent(trimmed)}&page_size=10`
@@ -43,7 +48,11 @@ export async function searchDeputes(
   }
 
   const data = await res.json()
-  const raw: RawDepute[] = data?.results?.deputes ?? []
+  // Garde de type : une réponse malformée (deputes non-tableau) ne doit pas
+  // provoquer un TypeError sur .map().
+  const raw: RawDepute[] = Array.isArray(data?.results?.deputes)
+    ? data.results.deputes
+    : []
 
   return raw.map((d) => ({
     uid: d.acteur_uid,

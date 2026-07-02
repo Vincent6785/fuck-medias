@@ -110,6 +110,7 @@ function SearchInput({
       placeholder="Ex. : Bazin, Dupont…"
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      maxLength={100}
       autoComplete="off"
       aria-label="Nom du député"
     />
