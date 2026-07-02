@@ -3,11 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Durcissement sécurité (site statique GitHub Pages : pas d'en-têtes serveur possibles). -->
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; connect-src 'self' https://www.civix.fr; img-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
-    />
+    <!-- La Content-Security-Policy est injectée au build par vite.config.ts
+         (plugin injectCsp) pour ne pas contraindre le serveur de dev / HMR. -->
     <meta name="referrer" content="no-referrer" />
     <meta name="description" content="Trouvez votre député et consultez son bilan de votes sur civix.fr." />
     <title>Trouve ton député</title>

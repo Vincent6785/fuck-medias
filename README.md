@@ -26,10 +26,12 @@ npm test         # tests fonctionnels (Vitest + Testing Library)
 - Rendu 100 % via échappement JSX (aucun `dangerouslySetInnerHTML`), API en
   HTTPS, requête `encodeURIComponent` **bornée à 100 caractères**, slug encodé,
   réponse API garde-typée, liens externes en `noopener,noreferrer`.
-- `index.html` fixe une **Content-Security-Policy** stricte (`default-src 'self'`,
-  `connect-src` limité à `https://www.civix.fr`, `object-src 'none'`, sans
-  `'unsafe-inline'`) et `referrer: no-referrer` via `<meta>`. Si l'API change de
-  domaine, mettre à jour `connect-src`.
+- **Content-Security-Policy** stricte (`default-src 'self'`, `connect-src` limité
+  à `https://www.civix.fr`, `object-src 'none'`, sans `'unsafe-inline'`) injectée
+  dans le build via le plugin `injectCsp` de `vite.config.ts` (`apply: 'build'`),
+  pour ne pas contraindre le serveur de dev / HMR. `referrer: no-referrer` reste
+  dans `index.html`. Si l'API change de domaine, mettre à jour `connect-src` dans
+  `vite.config.ts`.
 - **CI durcie** : permissions au moindre privilège par job (le `build` n'a que
   `contents: read` ; `pages`/`id-token` réservés au `deploy`) et actions
   GitHub épinglées à des **SHAs de commit** (anti-repointage de tag).
