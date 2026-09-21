@@ -1,0 +1,34 @@
+name: CI
+
+# Le workflow de déploiement ne se déclenche que sur `main` : sans ce job,
+# le code poussé sur `dev` / `pre-prod` ou proposé en PR n'était jamais
+# validé avant d'atterrir (et de partir en production) sur `main`.
+on:
+  push:
+    branches: [dev, pre-prod]
+  pull_request:
+    branches: [main, pre-prod, dev]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - run: npm run build

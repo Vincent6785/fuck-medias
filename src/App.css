@@ -31,6 +31,13 @@ h1 {
   border-color: var(--accent);
 }
 
+/* L'outline est neutralisée ci-dessus au profit de la bordure ; on rétablit un
+   indicateur franc pour la navigation au clavier. */
+.search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .results {
   margin-top: 1.5rem;
   display: flex;
@@ -63,11 +70,13 @@ h1 {
 .result-name {
   font-size: 1.1rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .result-meta {
   color: var(--muted);
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }
 
 .hint {
@@ -88,4 +97,23 @@ h1 {
 
 .footer a {
   color: var(--accent);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search,
+  .result {
+    transition: none;
+  }
 }

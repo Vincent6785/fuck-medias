@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { deputeUrl, searchDeputes } from './api'
+import { ApiError, deputeUrl, searchDeputes } from './api'
 
-/** Construit une réponse fetch minimale (ok + json). */
 function mockResponse(body: unknown, ok = true, status = 200): Response {
   return {
     ok,
@@ -48,7 +47,7 @@ describe('searchDeputes', () => {
 
     await searchDeputes('  Dupont & Cie  ')
 
-    const calledUrl = fetchMock.mock.calls[0][0] as string
+    const calledUrl = fetchMock.mock.calls[0]![0] as string
     expect(calledUrl).toBe(
       'https://www.civix.fr/api/v1/search?search=Dupont%20%26%20Cie&page_size=10',
     )
@@ -63,18 +62,55 @@ describe('searchDeputes', () => {
 
     await searchDeputes('x', controller.signal)
 
-    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({
       signal: controller.signal,
     })
   })
 
-  it('lève une erreur avec le statut sur réponse non-OK', async () => {
+  it('lève une ApiError portant le statut sur réponse non-OK', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(mockResponse(null, false, 500)),
     )
 
     await expect(searchDeputes('x')).rejects.toThrow('Erreur API (500)')
+  })
+
+  it('expose le statut 429 pour permettre un message « quota dépassé »', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(mockResponse(null, false, 429)),
+    )
+
+    await expect(searchDeputes('x')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 429,
+    })
+    await expect(searchDeputes('x')).rejects.toBeInstanceOf(ApiError)
+  })
+
+  it('laisse remonter une panne réseau (fetch qui rejette)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
+    )
+
+    await expect(searchDeputes('x')).rejects.toThrow('Failed to fetch')
+  })
+
+  it('laisse remonter un corps JSON invalide', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError('Unexpected token < in JSON')
+        },
+      } as unknown as Response),
+    )
+
+    await expect(searchDeputes('x')).rejects.toThrow(SyntaxError)
   })
 
   it('normalise les députés renvoyés par l’API', async () => {
@@ -117,8 +153,8 @@ describe('searchDeputes', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse(raw)))
 
     const [d] = await searchDeputes('a')
-    expect(d.groupe).toBe('')
-    expect(d.departement).toBe('')
+    expect(d!.groupe).toBe('')
+    expect(d!.departement).toBe('')
   })
 
   it('renvoie [] quand results/deputes est absent', async () => {
@@ -146,6 +182,90 @@ describe('searchDeputes', () => {
     expect(await searchDeputes('x')).toEqual([])
   })
 
+  it('normalise plusieurs députés en une passe', async () => {
+    const raw = {
+      results: {
+        deputes: [
+          {
+            acteur_uid: 'PA1',
+            prenom: 'Jean',
+            nom: 'Dupont',
+            groupe_libelle_abrev: 'REN',
+            circ_departement: 'Paris',
+            slug: 'jean-dupont',
+          },
+          { acteur_uid: 'PA2', prenom: 'Marie', nom: 'Martin', slug: 'marie-martin' },
+        ],
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse(raw)))
+
+    const deputes = await searchDeputes('x')
+    expect(deputes).toHaveLength(2)
+    expect(deputes[1]).toEqual({
+      uid: 'PA2',
+      prenom: 'Marie',
+      nom: 'Martin',
+      groupe: '',
+      departement: '',
+      slug: 'marie-martin',
+    })
+  })
+
+  it('écarte les entrées auxquelles il manque un champ indispensable', async () => {
+    const raw = {
+      results: {
+        deputes: [
+          { acteur_uid: 'PA1', prenom: 'Jean', nom: 'Dupont', slug: 'jean-dupont' },
+          { prenom: 'Sans', nom: 'Uid', slug: 'sans-uid' },
+          { acteur_uid: 'PA3', prenom: 'Sans', nom: 'Slug' },
+          { acteur_uid: 42, prenom: 'Mauvais', nom: 'Type', slug: 'x' },
+          null,
+          'pas un objet',
+        ],
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse(raw)))
+
+    const deputes = await searchDeputes('x')
+    expect(deputes).toHaveLength(1)
+    expect(deputes[0]!.uid).toBe('PA1')
+  })
+
+  it('ignore un champ optionnel au mauvais type plutôt que de l’afficher', async () => {
+    const raw = {
+      results: {
+        deputes: [
+          {
+            acteur_uid: 'PA1',
+            prenom: 'Jean',
+            nom: 'Dupont',
+            slug: 'jean-dupont',
+            groupe_libelle_abrev: 123,
+            circ_departement: { nom: 'Paris' },
+          },
+        ],
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse(raw)))
+
+    const [d] = await searchDeputes('x')
+    expect(d!.groupe).toBe('')
+    expect(d!.departement).toBe('')
+  })
+
+  it('laisse passer une requête de exactement 100 caractères', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(mockResponse({ results: { deputes: [] } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await searchDeputes('b'.repeat(100))
+
+    const calledUrl = fetchMock.mock.calls[0]![0] as string
+    expect(new URL(calledUrl).searchParams.get('search')).toBe('b'.repeat(100))
+  })
+
   it('borne la requête à 100 caractères avant l’appel', async () => {
     const fetchMock = vi
       .fn()
@@ -154,7 +274,7 @@ describe('searchDeputes', () => {
 
     await searchDeputes('a'.repeat(500))
 
-    const calledUrl = fetchMock.mock.calls[0][0] as string
+    const calledUrl = fetchMock.mock.calls[0]![0] as string
     const search = new URL(calledUrl).searchParams.get('search')
     expect(search).toBe('a'.repeat(100))
   })
